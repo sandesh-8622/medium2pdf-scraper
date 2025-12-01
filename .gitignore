@@ -1,0 +1,20 @@
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# tool output
+medium_archives/
+medium-*.zip
+
+# editor / os junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
