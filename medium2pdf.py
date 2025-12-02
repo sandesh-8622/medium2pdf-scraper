@@ -28,6 +28,25 @@ except ImportError:
     HAS_PYPDF = False
 
 
+
+# --------------------------- helpers ---------------------------
+
+def slugify(text: str, max_len: int = 80) -> str:
+    text = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip()
+    text = re.sub(r"[\s_-]+", "-", text)
+    return text[:max_len].strip("-") or "untitled"
+
+
+def extract_username(profile_url: str) -> str:
+    parsed = urlparse(profile_url)
+    m = re.search(r"@([\w.\-]+)", parsed.path)
+    if m:
+        return m.group(1)
+    if parsed.netloc.endswith(".medium.com"):
+        return parsed.netloc.split(".")[0]
+    raise ValueError(f"Could not parse a Medium username from: {profile_url}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="medium2pdf",
