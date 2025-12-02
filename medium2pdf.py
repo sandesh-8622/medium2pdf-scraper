@@ -29,6 +29,49 @@ except ImportError:
 
 
 
+
+# Phrases Cloudflare uses on its challenge interstitials.
+CF_TITLES = (
+    "Just a moment",
+    "Performing security verification",
+    "Attention Required",
+    "Checking your browser",
+)
+
+
+# --------------------------- cloudflare handling ---------------------------
+
+async def wait_past_cloudflare(page, max_seconds: int = 45) -> bool:
+    """Poll the page until the Cloudflare challenge clears.
+    Returns True if real content is detected, False on timeout."""
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + max_seconds
+    announced = False
+
+    while loop.time() < deadline:
+        try:
+            title = await page.title()
+        except Exception:
+            title = ""
+
+        on_challenge = any(s in title for s in CF_TITLES)
+        if on_challenge:
+            if not announced:
+                print("    (Cloudflare challenge - waiting for it to clear...)")
+                announced = True
+            await asyncio.sleep(2)
+            continue
+
+        # Title is no longer the challenge - confirm real content is there.
+        try:
+            await page.wait_for_selector("article", timeout=3_000)
+            return True
+        except PWTimeout:
+            await asyncio.sleep(1)
+
+    return False
+
+
 # --------------------------- helpers ---------------------------
 
 def slugify(text: str, max_len: int = 80) -> str:
