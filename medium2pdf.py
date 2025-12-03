@@ -72,6 +72,55 @@ async def wait_past_cloudflare(page, max_seconds: int = 45) -> bool:
     return False
 
 
+
+# --------------------------- discovery ---------------------------
+
+async def discover_article_urls(page, profile_url: str,
+                                 max_scrolls: int = 300,
+                                 scroll_pause: float = 1.5) -> list[str]:
+    print(f"[+] Loading profile: {profile_url}")
+    await page.goto(profile_url, wait_until="domcontentloaded", timeout=60_000)
+    await wait_past_cloudflare(page, max_seconds=30)
+
+    try:
+        await page.wait_for_function(
+            "Array.from(document.querySelectorAll('a[href]'))"
+            ".some(a => /-[a-f0-9]{12}(\\?|$)/.test(a.href))",
+            timeout=20_000,
+        )
+    except PWTimeout:
+        print("[!] No article-shaped links found. Is the URL a public Medium profile?")
+        return []
+
+    seen: set[str] = set()
+    last_count = 0
+    stable = 0
+
+    for _ in range(max_scrolls):
+        hrefs = await page.evaluate(
+            "() => Array.from(document.querySelectorAll('a[href]'))"
+            ".map(a => a.href)"
+            ".filter(h => /-[a-f0-9]{12}(\\?|$)/.test(h))"
+        )
+        for h in hrefs:
+            seen.add(h.split("?")[0].split("#")[0])
+
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+        await asyncio.sleep(scroll_pause)
+
+        if len(seen) == last_count:
+            stable += 1
+            if stable >= 4:
+                print(f"[+] Reached end of feed ({len(seen)} articles).")
+                break
+        else:
+            stable = 0
+            print(f"    discovered {len(seen)} so far...")
+        last_count = len(seen)
+
+    return sorted(seen)
+
+
 # --------------------------- helpers ---------------------------
 
 def slugify(text: str, max_len: int = 80) -> str:
