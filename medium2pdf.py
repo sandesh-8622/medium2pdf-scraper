@@ -121,6 +121,36 @@ async def discover_article_urls(page, profile_url: str,
     return sorted(seen)
 
 
+
+# --------------------------- rendering ---------------------------
+
+async def save_article_as_pdf(context, url: str, out_path: Path,
+                               timeout: int = 60_000) -> tuple[bool, str]:
+    page = await context.new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
+
+        if not await wait_past_cloudflare(page, max_seconds=45):
+            return False, "(Cloudflare challenge did not clear)"
+
+        title = (await page.title()).replace(" | Medium", "").strip() or "untitled"
+        if any(s in title for s in CF_TITLES):
+            return False, f"(still on challenge page: {title!r})"
+
+        await page.pdf(
+            path=str(out_path),
+            format="A4",
+            print_background=True,
+            margin={"top": "18mm", "bottom": "18mm",
+                    "left": "15mm", "right": "15mm"},
+        )
+        return True, title
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+    finally:
+        await page.close()
+
+
 # --------------------------- helpers ---------------------------
 
 def slugify(text: str, max_len: int = 80) -> str:
