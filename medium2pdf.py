@@ -137,6 +137,19 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
         if any(s in title for s in CF_TITLES):
             return False, f"(still on challenge page: {title!r})"
 
+        await page.add_style_tag(content="""
+            [data-testid="sign-up-prompt"],
+            [class*="signup"],
+            [class*="banner"],
+            [class*="cookie"],
+            [class*="paywall"],
+            div[role="dialog"],
+            nav, header[role="banner"] {
+                display: none !important;
+            }
+            article { max-width: 100% !important; }
+        """)
+
         await page.pdf(
             path=str(out_path),
             format="A4",
