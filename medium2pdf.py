@@ -150,6 +150,19 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
             article { max-width: 100% !important; }
         """)
 
+        await page.evaluate("""
+            async () => {
+                const sleep = ms => new Promise(r => setTimeout(r, ms));
+                const total = document.body.scrollHeight;
+                for (let y = 0; y < total; y += 500) {
+                    window.scrollTo(0, y);
+                    await sleep(80);
+                }
+                window.scrollTo(0, 0);
+            }
+        """)
+        await asyncio.sleep(0.6)
+
         await page.pdf(
             path=str(out_path),
             format="A4",
