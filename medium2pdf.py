@@ -177,6 +177,41 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
         await page.close()
 
 
+
+# --------------------------- merging ---------------------------
+
+def merge_pdfs(entries: list[dict], work_dir: Path, output_path: Path) -> bool:
+    """Combine all per-article PDFs into one file with bookmarks per article.
+
+    `entries` are manifest dicts with keys: file, title, url.
+    """
+    if not HAS_PYPDF:
+        print("[!] pypdf not installed - skipping merged PDF.")
+        print("    To enable: python -m pip install pypdf")
+        return False
+
+    writer = PdfWriter()
+    page_offset = 0
+    for entry in entries:
+        pdf_path = work_dir / entry["file"]
+        try:
+            reader = PdfReader(str(pdf_path))
+        except Exception as e:
+            print(f"    [!] Could not read {entry['file']}: {e}")
+            continue
+        for page in reader.pages:
+            writer.add_page(page)
+        try:
+            writer.add_outline_item(entry["title"][:100], page_offset)
+        except Exception:
+            pass  # bookmark failure shouldn't break merging
+        page_offset += len(reader.pages)
+
+    with output_path.open("wb") as f:
+        writer.write(f)
+    return True
+
+
 # --------------------------- helpers ---------------------------
 
 def slugify(text: str, max_len: int = 80) -> str:
