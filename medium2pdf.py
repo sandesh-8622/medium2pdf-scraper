@@ -255,3 +255,37 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# --------------------------- main run ---------------------------
+
+async def run(profile_url: str, output_dir: Path, delay: float,
+              max_articles: int | None, list_only: bool) -> None:
+    username = extract_username(profile_url)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    work_dir = output_dir / f"medium-{username}-{stamp}"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
+    async with async_playwright() as p:
+        # Try real installed Chrome first - Cloudflare flags the bundled
+        # chrome-headless-shell almost immediately.
+        launch_args = ["--disable-blink-features=AutomationControlled"]
+        browser = None
+        for channel in ("chrome", "msedge", None):
+            try:
+                kwargs = dict(headless=False, args=launch_args)
+                if channel:
+                    kwargs["channel"] = channel
+                browser = await p.chromium.launch(**kwargs)
+                label = channel or "bundled chromium"
+                print(f"[+] Launched browser: {label}")
+                break
+            except Exception as e:
+                print(f"[!] Could not launch {channel or 'chromium'}: "
+                      f"{type(e).__name__}")
+                continue
+        if browser is None:
+            print("[!] No browser could be launched. Exiting.")
+            return
+
+        await browser.close()
