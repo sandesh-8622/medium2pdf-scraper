@@ -310,14 +310,77 @@ async def run(profile_url: str, output_dir: Path, delay: float,
 
         if not urls:
             print("[!] No articles found.")
-            await browser.close()
+            print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
+
+        manifest: list[dict] = []
+        failures: list[tuple[str, str]] = []
+        for i, url in enumerate(urls, 1):
+            print(f"[{i}/{len(urls)}] {url}")
+            tmp_path = work_dir / f"_tmp_{i:04d}.pdf"
+            success, info = await save_article_as_pdf(context, url, tmp_path)
+            if success:
+                final_name = f"{i:03d}-{slugify(info)}.pdf"
+                final_path = work_dir / final_name
+                tmp_path.rename(final_path)
+                manifest.append({"url": url, "title": info, "file": final_name})
+                print(f"    saved: {final_name}")
+            else:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                failures.append((url, info))
+                print(f"    [!] {info}")
+            await asyncio.sleep(delay)
+
+        await browser.close()
             return
 
         if list_only:
             list_path = work_dir / "urls.txt"
             list_path.write_text("\n".join(urls), encoding="utf-8")
             print(f"\n[*] --list-only set. Wrote {len(urls)} URLs to:\n    {list_path}")
-            await browser.close()
+            print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
+
+        manifest: list[dict] = []
+        failures: list[tuple[str, str]] = []
+        for i, url in enumerate(urls, 1):
+            print(f"[{i}/{len(urls)}] {url}")
+            tmp_path = work_dir / f"_tmp_{i:04d}.pdf"
+            success, info = await save_article_as_pdf(context, url, tmp_path)
+            if success:
+                final_name = f"{i:03d}-{slugify(info)}.pdf"
+                final_path = work_dir / final_name
+                tmp_path.rename(final_path)
+                manifest.append({"url": url, "title": info, "file": final_name})
+                print(f"    saved: {final_name}")
+            else:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                failures.append((url, info))
+                print(f"    [!] {info}")
+            await asyncio.sleep(delay)
+
+        await browser.close()
             return
+
+        print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
+
+        manifest: list[dict] = []
+        failures: list[tuple[str, str]] = []
+        for i, url in enumerate(urls, 1):
+            print(f"[{i}/{len(urls)}] {url}")
+            tmp_path = work_dir / f"_tmp_{i:04d}.pdf"
+            success, info = await save_article_as_pdf(context, url, tmp_path)
+            if success:
+                final_name = f"{i:03d}-{slugify(info)}.pdf"
+                final_path = work_dir / final_name
+                tmp_path.rename(final_path)
+                manifest.append({"url": url, "title": info, "file": final_name})
+                print(f"    saved: {final_name}")
+            else:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+                failures.append((url, info))
+                print(f"    [!] {info}")
+            await asyncio.sleep(delay)
 
         await browser.close()
