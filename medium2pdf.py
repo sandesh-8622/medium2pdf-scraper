@@ -384,3 +384,42 @@ async def run(profile_url: str, output_dir: Path, delay: float,
             await asyncio.sleep(delay)
 
         await browser.close()
+
+    # Build a single merged PDF (in article order, with bookmarks) if we have any.
+    merged_filename = None
+    if manifest:
+        merged_filename = f"_MERGED_all-articles-{username}.pdf"
+        merged_path = work_dir / merged_filename
+        print(f"\n[+] Merging {len(manifest)} PDFs into one file...")
+        if merge_pdfs(manifest, work_dir, merged_path):
+            print(f"    saved: {merged_filename}")
+        else:
+            merged_filename = None
+
+    manifest_path = work_dir / "manifest.txt"
+    with manifest_path.open("w", encoding="utf-8") as f:
+        f.write(f"Medium archive - @{username}\n")
+        f.write(f"Generated: {datetime.now():%Y-%m-%d %H:%M:%S}\n")
+        f.write(f"Source: {profile_url}\n")
+        f.write(f"Total articles saved: {len(manifest)}\n")
+        f.write(f"Failures: {len(failures)}\n")
+        if merged_filename:
+            f.write(f"Merged PDF: {merged_filename}\n")
+        f.write("\n")
+        for entry in manifest:
+            f.write(f"- {entry['title']}\n")
+            f.write(f"  URL : {entry['url']}\n")
+            f.write(f"  File: {entry['file']}\n\n")
+        if failures:
+            f.write("\nFAILURES:\n")
+            for url, reason in failures:
+                f.write(f"- {url}\n  {reason}\n\n")
+
+    zip_path = output_dir / f"medium-{username}-{stamp}.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for pdf in sorted(work_dir.glob("*.pdf")):
+            zf.write(pdf, arcname=pdf.name)
+        zf.write(manifest_path, arcname=manifest_path.name)
+
+    print(f"\n[done] Archive: {zip_path}")
+    print(f"       {len(manifest)} PDFs saved, {len(failures)} failed.")
