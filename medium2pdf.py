@@ -288,4 +288,36 @@ async def run(profile_url: str, output_dir: Path, delay: float,
             print("[!] No browser could be launched. Exiting.")
             return
 
+        context = await browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 1800},
+        )
+        # Light stealth - hide the navigator.webdriver flag.
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', "
+            "{get: () => undefined});"
+        )
+
+        page = await context.new_page()
+        urls = await discover_article_urls(page, profile_url)
+        await page.close()
+
+        if max_articles:
+            urls = urls[:max_articles]
+
+        if not urls:
+            print("[!] No articles found.")
+            await browser.close()
+            return
+
+        if list_only:
+            list_path = work_dir / "urls.txt"
+            list_path.write_text("\n".join(urls), encoding="utf-8")
+            print(f"\n[*] --list-only set. Wrote {len(urls)} URLs to:\n    {list_path}")
+            await browser.close()
+            return
+
         await browser.close()
