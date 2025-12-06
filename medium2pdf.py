@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
 """
-medium2pdf - archive a medium author's posts as pdfs
+medium2pdf v3 - Archive a Medium author's posts as PDFs in a zip.
+
+Changes from v2:
+  - Uses your installed Chrome (not chrome-headless-shell) to defeat
+    Cloudflare bot detection on Medium article pages.
+  - Runs the browser visibly so Cloudflare's JS challenge can complete.
+  - Detects "Just a moment..." challenge pages and waits for the real
+    article to load before printing.
+
+Setup (one time):
+    python -m pip install playwright
+    python -m playwright install chromium
+    (Chrome itself is already on your system if you use it normally.)
+
+Usage:
+    python medium2pdf.py https://medium.com/@username
+    python medium2pdf.py https://medium.com/@username --max 3
+    python medium2pdf.py https://medium.com/@username --delay 4
 """
 
 import argparse
