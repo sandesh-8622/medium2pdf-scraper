@@ -230,32 +230,6 @@ def extract_username(profile_url: str) -> str:
     raise ValueError(f"Could not parse a Medium username from: {profile_url}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        prog="medium2pdf",
-        description="Archive a Medium author's posts as PDFs in a single zip.",
-    )
-    parser.add_argument("profile_url", help="e.g. https://medium.com/@username")
-    parser.add_argument("-o", "--output", type=Path, default=Path("./medium_archives"))
-    parser.add_argument("--delay", type=float, default=2.5,
-                        help="Seconds between articles (default: 2.5).")
-    parser.add_argument("--max", dest="max_articles", type=int, default=None)
-    parser.add_argument("--list-only", action="store_true",
-                        help="Just write URL list, no PDFs.")
-    args = parser.parse_args()
-
-    args.output.mkdir(parents=True, exist_ok=True)
-    try:
-        asyncio.run(run(args.profile_url, args.output, args.delay,
-                        args.max_articles, args.list_only))
-    except KeyboardInterrupt:
-        print("\n[!] Interrupted.")
-        sys.exit(130)
-
-
-if __name__ == "__main__":
-    main()
-
 
 # --------------------------- main run ---------------------------
 
@@ -423,3 +397,33 @@ async def run(profile_url: str, output_dir: Path, delay: float,
 
     print(f"\n[done] Archive: {zip_path}")
     print(f"       {len(manifest)} PDFs saved, {len(failures)} failed.")
+
+
+# --------------------------- cli ---------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="medium2pdf",
+        description="Archive a Medium author's posts as PDFs in a single zip.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("profile_url", help="e.g. https://medium.com/@username")
+    parser.add_argument("-o", "--output", type=Path, default=Path("./medium_archives"))
+    parser.add_argument("--delay", type=float, default=2.5,
+                        help="Seconds between articles (default: 2.5).")
+    parser.add_argument("--max", dest="max_articles", type=int, default=None)
+    parser.add_argument("--list-only", action="store_true",
+                        help="Just write URL list, no PDFs.")
+    args = parser.parse_args()
+
+    args.output.mkdir(parents=True, exist_ok=True)
+    try:
+        asyncio.run(run(args.profile_url, args.output, args.delay,
+                        args.max_articles, args.list_only))
+    except KeyboardInterrupt:
+        print("\n[!] Interrupted.")
+        sys.exit(130)
+
+
+if __name__ == "__main__":
+    main()
