@@ -301,7 +301,8 @@ async def run(profile_url: str, output_dir: Path, delay: float,
 
         if not urls:
             print("[!] No articles found.")
-            print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
+            # context stays open for all articles — one browser, many tabs
+        print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
 
         manifest: list[dict] = []
         failures: list[tuple[str, str]] = []
@@ -329,7 +330,8 @@ async def run(profile_url: str, output_dir: Path, delay: float,
             list_path = work_dir / "urls.txt"
             list_path.write_text("\n".join(urls), encoding="utf-8")
             print(f"\n[*] --list-only set. Wrote {len(urls)} URLs to:\n    {list_path}")
-            print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
+            # context stays open for all articles — one browser, many tabs
+        print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
 
         manifest: list[dict] = []
         failures: list[tuple[str, str]] = []
@@ -353,6 +355,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
         await browser.close()
             return
 
+        # context stays open for all articles — one browser, many tabs
         print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
 
         manifest: list[dict] = []
