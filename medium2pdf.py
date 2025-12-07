@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """
-medium2pdf v3 - Archive a Medium author's posts as PDFs in a zip.
+medium2pdf - archive a medium author's posts as pdfs in a zip.
 
-Changes from v2:
-  - Uses your installed Chrome (not chrome-headless-shell) to defeat
-    Cloudflare bot detection on Medium article pages.
-  - Runs the browser visibly so Cloudflare's JS challenge can complete.
-  - Detects "Just a moment..." challenge pages and waits for the real
-    article to load before printing.
+uses your installed chrome (not the bundled chrome-headless-shell) so cloudflare
+doesn't flag us instantly. browser runs visible because the cloudflare js
+challenge needs a real user-looking session to complete.
 
-Setup (one time):
-    python -m pip install playwright
+setup once:
+    python -m pip install playwright pypdf
     python -m playwright install chromium
-    (Chrome itself is already on your system if you use it normally.)
 
-Usage:
+usage:
     python medium2pdf.py https://medium.com/@username
     python medium2pdf.py https://medium.com/@username --max 3
     python medium2pdf.py https://medium.com/@username --delay 4
@@ -45,9 +41,7 @@ except ImportError:
     HAS_PYPDF = False
 
 
-
-
-# Phrases Cloudflare uses on its challenge interstitials.
+# titles cloudflare puts on its challenge pages
 CF_TITLES = (
     "Just a moment",
     "Performing security verification",
@@ -56,11 +50,61 @@ CF_TITLES = (
 )
 
 
-# --------------------------- cloudflare handling ---------------------------
+# helpers
+
+def slugify(text: str, max_len: int = 80) -> str:
+    text = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip()
+    text = re.sub(r"[\s_-]+", "-", text)
+    return text[:max_len].strip("-") or "untitled"
+
+
+def extract_username(profile_url: str) -> str:
+    parsed = urlparse(profile_url)
+    m = re.search(r"@([\w.\-]+)", parsed.path)
+    if m:
+        return m.group(1)
+    if parsed.netloc.endswith(".medium.com"):
+        return parsed.netloc.split(".")[0]
+    raise ValueError(f"Could not parse a Medium username from: {profile_url}")
+
+
+def merge_pdfs(entries: list[dict], work_dir: Path, output_path: Path) -> bool:
+    """combine all the per-article pdfs into one file with a bookmark per article.
+
+    entries is a list of manifest dicts with keys: file, title, url.
+    """
+    if not HAS_PYPDF:
+        print("[!] pypdf not installed - skipping merged PDF.")
+        print("    To enable: python -m pip install pypdf")
+        return False
+
+    writer = PdfWriter()
+    page_offset = 0
+    for entry in entries:
+        pdf_path = work_dir / entry["file"]
+        try:
+            reader = PdfReader(str(pdf_path))
+        except Exception as e:
+            print(f"    [!] Could not read {entry['file']}: {e}")
+            continue
+        for page in reader.pages:
+            writer.add_page(page)
+        try:
+            writer.add_outline_item(entry["title"][:100], page_offset)
+        except Exception:
+            pass  # if a bookmark fails just skip it, dont fail the merge
+        page_offset += len(reader.pages)
+
+    with output_path.open("wb") as f:
+        writer.write(f)
+    return True
+
+
+# cloudflare
 
 async def wait_past_cloudflare(page, max_seconds: int = 45) -> bool:
-    """Poll the page until the Cloudflare challenge clears.
-    Returns True if real content is detected, False on timeout."""
+    """wait until the cloudflare challenge clears.
+    returns True once real content shows up, False on timeout."""
     loop = asyncio.get_event_loop()
     deadline = loop.time() + max_seconds
     announced = False
@@ -79,7 +123,7 @@ async def wait_past_cloudflare(page, max_seconds: int = 45) -> bool:
             await asyncio.sleep(2)
             continue
 
-        # Title is no longer the challenge - confirm real content is there.
+        # title is no longer the challenge — make sure the article actually loaded
         try:
             await page.wait_for_selector("article", timeout=3_000)
             return True
@@ -89,8 +133,7 @@ async def wait_past_cloudflare(page, max_seconds: int = 45) -> bool:
     return False
 
 
-
-# --------------------------- discovery ---------------------------
+# discovery — scroll the profile and grab every article link
 
 async def discover_article_urls(page, profile_url: str,
                                  max_scrolls: int = 300,
@@ -114,6 +157,7 @@ async def discover_article_urls(page, profile_url: str,
     stable = 0
 
     for _ in range(max_scrolls):
+        # every medium article url ends in -<12 hex chars>, thats how we spot them
         hrefs = await page.evaluate(
             "() => Array.from(document.querySelectorAll('a[href]'))"
             ".map(a => a.href)"
@@ -125,6 +169,7 @@ async def discover_article_urls(page, profile_url: str,
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await asyncio.sleep(scroll_pause)
 
+        # if 4 scrolls in a row turn up nothing new, were at the bottom
         if len(seen) == last_count:
             stable += 1
             if stable >= 4:
@@ -138,8 +183,7 @@ async def discover_article_urls(page, profile_url: str,
     return sorted(seen)
 
 
-
-# --------------------------- rendering ---------------------------
+# rendering — open each article and print to pdf
 
 async def save_article_as_pdf(context, url: str, out_path: Path,
                                timeout: int = 60_000) -> tuple[bool, str]:
@@ -154,6 +198,7 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
         if any(s in title for s in CF_TITLES):
             return False, f"(still on challenge page: {title!r})"
 
+        # hide the signup popups, banners, paywall nag, etc before printing
         await page.add_style_tag(content="""
             [data-testid="sign-up-prompt"],
             [class*="signup"],
@@ -167,6 +212,7 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
             article { max-width: 100% !important; }
         """)
 
+        # scroll all the way down then back up so lazy-loaded images appear
         await page.evaluate("""
             async () => {
                 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -194,61 +240,7 @@ async def save_article_as_pdf(context, url: str, out_path: Path,
         await page.close()
 
 
-
-# --------------------------- merging ---------------------------
-
-def merge_pdfs(entries: list[dict], work_dir: Path, output_path: Path) -> bool:
-    """Combine all per-article PDFs into one file with bookmarks per article.
-
-    `entries` are manifest dicts with keys: file, title, url.
-    """
-    if not HAS_PYPDF:
-        print("[!] pypdf not installed - skipping merged PDF.")
-        print("    To enable: python -m pip install pypdf")
-        return False
-
-    writer = PdfWriter()
-    page_offset = 0
-    for entry in entries:
-        pdf_path = work_dir / entry["file"]
-        try:
-            reader = PdfReader(str(pdf_path))
-        except Exception as e:
-            print(f"    [!] Could not read {entry['file']}: {e}")
-            continue
-        for page in reader.pages:
-            writer.add_page(page)
-        try:
-            writer.add_outline_item(entry["title"][:100], page_offset)
-        except Exception:
-            pass  # bookmark failure shouldn't break merging
-        page_offset += len(reader.pages)
-
-    with output_path.open("wb") as f:
-        writer.write(f)
-    return True
-
-
-# --------------------------- helpers ---------------------------
-
-def slugify(text: str, max_len: int = 80) -> str:
-    text = re.sub(r"[^\w\s-]", "", text, flags=re.UNICODE).strip()
-    text = re.sub(r"[\s_-]+", "-", text)
-    return text[:max_len].strip("-") or "untitled"
-
-
-def extract_username(profile_url: str) -> str:
-    parsed = urlparse(profile_url)
-    m = re.search(r"@([\w.\-]+)", parsed.path)
-    if m:
-        return m.group(1)
-    if parsed.netloc.endswith(".medium.com"):
-        return parsed.netloc.split(".")[0]
-    raise ValueError(f"Could not parse a Medium username from: {profile_url}")
-
-
-
-# --------------------------- main run ---------------------------
+# main run
 
 async def run(profile_url: str, output_dir: Path, delay: float,
               max_articles: int | None, list_only: bool) -> None:
@@ -258,8 +250,8 @@ async def run(profile_url: str, output_dir: Path, delay: float,
     work_dir.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as p:
-        # Try real installed Chrome first - Cloudflare flags the bundled
-        # chrome-headless-shell almost immediately.
+        # try real chrome first, then edge, then bundled chromium as a last resort.
+        # cloudflare flags the bundled chrome-headless-shell almost instantly.
         launch_args = ["--disable-blink-features=AutomationControlled"]
         browser = None
         for channel in ("chrome", "msedge", None):
@@ -286,7 +278,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
             ),
             viewport={"width": 1280, "height": 1800},
         )
-        # Light stealth - hide the navigator.webdriver flag.
+        # tiny bit of stealth — hide the navigator.webdriver flag
         await context.add_init_script(
             "Object.defineProperty(navigator, 'webdriver', "
             "{get: () => undefined});"
@@ -301,63 +293,19 @@ async def run(profile_url: str, output_dir: Path, delay: float,
 
         if not urls:
             print("[!] No articles found.")
-            # context stays open for all articles — one browser, many tabs
-        print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
-
-        manifest: list[dict] = []
-        failures: list[tuple[str, str]] = []
-        for i, url in enumerate(urls, 1):
-            print(f"[{i}/{len(urls)}] {url}")
-            tmp_path = work_dir / f"_tmp_{i:04d}.pdf"
-            success, info = await save_article_as_pdf(context, url, tmp_path)
-            if success:
-                final_name = f"{i:03d}-{slugify(info)}.pdf"
-                final_path = work_dir / final_name
-                tmp_path.rename(final_path)
-                manifest.append({"url": url, "title": info, "file": final_name})
-                print(f"    saved: {final_name}")
-            else:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-                failures.append((url, info))
-                print(f"    [!] {info}")
-            await asyncio.sleep(delay)
-
-        await browser.close()
+            await browser.close()
             return
 
         if list_only:
             list_path = work_dir / "urls.txt"
             list_path.write_text("\n".join(urls), encoding="utf-8")
             print(f"\n[*] --list-only set. Wrote {len(urls)} URLs to:\n    {list_path}")
-            # context stays open for all articles — one browser, many tabs
-        print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
-
-        manifest: list[dict] = []
-        failures: list[tuple[str, str]] = []
-        for i, url in enumerate(urls, 1):
-            print(f"[{i}/{len(urls)}] {url}")
-            tmp_path = work_dir / f"_tmp_{i:04d}.pdf"
-            success, info = await save_article_as_pdf(context, url, tmp_path)
-            if success:
-                final_name = f"{i:03d}-{slugify(info)}.pdf"
-                final_path = work_dir / final_name
-                tmp_path.rename(final_path)
-                manifest.append({"url": url, "title": info, "file": final_name})
-                print(f"    saved: {final_name}")
-            else:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-                failures.append((url, info))
-                print(f"    [!] {info}")
-            await asyncio.sleep(delay)
-
-        await browser.close()
+            await browser.close()
             return
 
-        # context stays open for all articles — one browser, many tabs
         print(f"\n[+] Saving {len(urls)} articles as PDF...\n")
 
+        # one browser, one context, many tabs — keep cookies/cache warm across articles
         manifest: list[dict] = []
         failures: list[tuple[str, str]] = []
         for i, url in enumerate(urls, 1):
@@ -379,7 +327,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
 
         await browser.close()
 
-    # Build a single merged PDF (in article order, with bookmarks) if we have any.
+    # merge everything into one big bookmarked pdf
     merged_filename = None
     if manifest:
         merged_filename = f"_MERGED_all-articles-{username}.pdf"
@@ -390,6 +338,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
         else:
             merged_filename = None
 
+    # write the manifest so each pdf can be traced back to its source url
     manifest_path = work_dir / "manifest.txt"
     with manifest_path.open("w", encoding="utf-8") as f:
         f.write(f"Medium archive - @{username}\n")
@@ -409,6 +358,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
             for url, reason in failures:
                 f.write(f"- {url}\n  {reason}\n\n")
 
+    # zip the whole thing up
     zip_path = output_dir / f"medium-{username}-{stamp}.zip"
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for pdf in sorted(work_dir.glob("*.pdf")):
@@ -419,7 +369,7 @@ async def run(profile_url: str, output_dir: Path, delay: float,
     print(f"       {len(manifest)} PDFs saved, {len(failures)} failed.")
 
 
-# --------------------------- cli ---------------------------
+# cli
 
 def main() -> None:
     parser = argparse.ArgumentParser(

@@ -95,7 +95,7 @@ on windows, run `python -m pip install ...` instead of `pip install ...`. same o
 
 ### "ERROR: Playwright is not installed" but i just installed it
 
-did you also run `python -m playwright install chromium`? the python package alone isn't enough. it needs the browser binaries too.
+did you also run `python -m playwright install chromium`? the python package and the browser binaries are two separate steps. both are needed.
 
 ### the firewall is asking to allow chrome
 
