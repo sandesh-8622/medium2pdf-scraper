@@ -25,6 +25,10 @@ medium-username-20260105-142233.zip
 
 the merged pdf opens with a clickable outline panel in any pdf reader, so you can jump straight to whichever article you want. the individual pdfs are there if you'd rather work with them separately, for example feeding them into a vector store one at a time.
 
+## demo
+
+![output folder showing merged pdf and individual article pdfs](demo.png)
+
 ## requirements
 
 * python 3.10 or newer
@@ -130,7 +134,7 @@ the file has to be in the folder you're running the command from. if your file i
 * it does not run on a schedule. you run it when you want a snapshot.
 * it does not try to fingerprint or impersonate anyone. it just opens a real browser and reads public pages.
 
-## how it works under the hood
+## how it works
 
 three phases.
 
@@ -164,4 +168,4 @@ the code is short. one file. if you fix a bug or add something useful, open a pr
 
 ## license
 
-mit. do whatever you want with the code. just don't blame me when medium changes their site and it breaks.
+do whatever you want with the code. just don't blame me when medium changes their site and it breaks. :\
